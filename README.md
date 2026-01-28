@@ -1,60 +1,62 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# upload-file-zip
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A simple Laravel app to receive ZIP file uploads from friends over a static IP when your internet or social media is unreliable.
 
-## About Laravel
+This project is intended for small self-hosted or LAN setups where friends can send ZIP archives directly to your server (for example, when mobile data or social platforms are unavailable).
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Purpose
+- Provide a lightweight endpoint to upload ZIP files.
+- Keep a local log of uploads in the database.
+- Run on a machine with a static IP so others can reach it reliably.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Requirements
+- PHP (compatible with the Laravel version in this repo)
+- Composer
+- A web server (Nginx, Apache) or Laravel's built-in server for development
+- SQLite (included as `database/database.sqlite`) or another database configured in `config/database.php`
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Quick setup (development)
+1. Install dependencies:
 
-## Learning Laravel
+```bash
+composer install
+```
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+2. Copy the environment file and generate an app key:
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+```bash
+cp .env.example .env
+php artisan key:generate
+```
 
-## Laravel Sponsors
+3. Ensure the SQLite file exists (if you keep the default):
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+```bash
+touch database/database.sqlite
+chmod 660 database/database.sqlite
+```
 
-### Premium Partners
+4. Run migrations:
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+```bash
+php artisan migrate
+```
 
-## Contributing
+5. Start the app (bind to 0.0.0.0 so friends on the LAN can connect):
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```bash
+php artisan serve --host=0.0.0.0 --port=8000
+```
 
-## Code of Conduct
+Then provide your static IP and port to your friends (for example, http://192.168.1.10:8000/upload).
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## Usage
+- The app accepts ZIP file uploads and stores them using Laravel's filesystem. Uploaded entries are logged in the `uploaded_files_log` table (see migrations).
+- Check received files under `storage/app/public` (or the configured disk).
 
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## Notes
+- This project is intentionally minimal — secure it before exposing to the internet (HTTPS, authentication, file size/type checks).
+- If you want, I can add an example upload form, a simple API endpoint with curl examples, or authentication.
 
 ## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
-# upload-file-zip
+MIT
