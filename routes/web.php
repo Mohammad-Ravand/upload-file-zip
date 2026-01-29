@@ -35,6 +35,7 @@ Route::get('upload-error',function(){
 });
 
 use App\Models\EditorContent;
+use App\Events\EditorUpdated;
 
 Route::get('editor', function () {
     return view('editor');
@@ -79,7 +80,20 @@ Route::patch('editor/{id}', function (Request $request, $id) {
         'content_json' => $data['content_json']
     ]);
 
-    return redirect('/editor/' . $item->id);
+    // Broadcast update to other users
+    broadcast(new EditorUpdated(
+        $item->id,
+        $item->title,
+        $item->content_json,
+        null
+    ))->toOthers();
+
+    return response()->json([
+        'success' => true,
+        'id' => $item->id,
+        'title' => $item->title,
+        'updated_at' => $item->updated_at
+    ]);
 });
 
 // image upload for editor
@@ -98,4 +112,16 @@ Route::post('editor/upload-image', function (Request $request) {
 Route::get('editor/{id}', function ($id) {
     $item = EditorContent::findOrFail($id);
     return view('editor_show', ['item' => $item]);
+});
+
+// poll for content updates (live collaboration)
+Route::get('editor/{id}/poll', function ($id) {
+    $item = EditorContent::findOrFail($id);
+    return response()->json([
+        'id' => $item->id,
+        'title' => $item->title,
+        'content_json' => $item->content_json,
+        'updated_at' => $item->updated_at->timestamp,
+        'updated_at_human' => $item->updated_at->diffForHumans()
+    ]);
 });

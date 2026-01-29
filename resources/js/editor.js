@@ -72,6 +72,8 @@ window.editor = new Editor({
     if (inputElement) {
       try {
         inputElement.value = JSON.stringify(window.editor.getJSON())
+        // Mark as modified for auto-save
+        window.editorModified = true
       } catch (e) {
         console.error('Failed to serialize editor JSON', e)
       }
@@ -90,18 +92,96 @@ if (!inputElement) {
   if (form) form.appendChild(inp)
 }
 
-// Form submission: always ensure JSON is set
+// Extract document ID from URL for auto-save and WebSocket
+let urlPath = window.location.pathname
+let docIdMatch = urlPath.match(/\/editor\/(\d+)/)
+let docId = docIdMatch ? docIdMatch[1] : null
+
+// Auto-save function - saves without page reload
+let lastSavedContent = JSON.stringify(window.editor.getJSON())
+let isSaving = false
+
+const autoSave = async () => {
+  if (!docId || isSaving || !window.editorModified) return
+
+  const currentContent = JSON.stringify(window.editor.getJSON())
+
+  // Only save if content changed
+  if (currentContent === lastSavedContent) {
+    window.editorModified = false
+    return
+  }
+
+  isSaving = true
+  showSavingStatus()
+
+  try {
+    const title = document.querySelector('#editor_title')?.value || 'Untitled'
+    const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+
+    const response = await fetch(`/editor/${docId}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': token,
+      },
+      body: JSON.stringify({
+        title: title,
+        content_json: currentContent
+      })
+    })
+
+    if (response.ok) {
+      lastSavedContent = currentContent
+      window.editorModified = false
+      console.log('💾 Auto-saved at', new Date().toLocaleTimeString())
+      showSavedStatus()
+    } else {
+      console.error('Auto-save failed:', response.status)
+    }
+  } catch (err) {
+    console.error('Auto-save error:', err)
+  } finally {
+    isSaving = false
+  }
+}
+
+// Show saving status
+function showSavingStatus() {
+  const status = document.getElementById('auto-save-status')
+  if (status) {
+    status.className = 'auto-save-status saving'
+    document.getElementById('save-text').textContent = 'Saving...'
+  }
+}
+
+// Show saved status
+function showSavedStatus() {
+  const status = document.getElementById('auto-save-status')
+  if (status) {
+    status.className = 'auto-save-status saved'
+    document.getElementById('save-text').textContent = '✓ All changes saved'
+
+    // Hide after 3 seconds
+    setTimeout(() => {
+      status.className = 'auto-save-status'
+    }, 3000)
+  }
+}
+
+// ⭐ START AUTO-SAVE INTERVAL - CRITICAL FIX
+setInterval(autoSave, 2000)  // Auto-save every 2 seconds
+console.log('✅ Auto-save interval started: every 2 seconds')
+// ⭐ END AUTO-SAVE INTERVAL
+
+// Form submission should not be needed anymore, but keep for safety
 const form = document.querySelector('#editor_form')
 if (form) {
   form.addEventListener('submit', (e) => {
-    try {
-      const jsonInput = document.querySelector('#editor_json')
-      if (jsonInput) {
-        jsonInput.value = JSON.stringify(window.editor.getJSON())
-      }
-    } catch (err) {
-      console.error('Submit error:', err)
-    }
+    e.preventDefault()
+    autoSave().then(() => {
+      showSaveIndicator()
+    })
   })
 }
 
@@ -196,3 +276,85 @@ Object.entries(toolbarButtons).forEach(([id, command]) => {
 
 // Show available commands in console for debugging
 console.log('Editor ready. Commands: editor.chain().focus().toggleBold().run(), etc.')
+
+// Real-time collaboration using Laravel Echo & WebSocket
+if (docId && window.Echo) {
+  console.log(`🔌 Connecting to WebSocket channel for document #${docId}`)
+
+  // Listen on the editor channel
+  window.Echo.channel(`editor-${docId}`)
+    .listen('EditorUpdated', (event) => {
+      console.log('📨 Received real-time update from another user:', event)
+
+      // Parse content
+      const serverContent = typeof event.content === 'string'
+        ? JSON.parse(event.content)
+        : event.content
+
+      const localContent = window.editor.getJSON()
+      const localJSON = JSON.stringify(localContent)
+      const serverJSON = JSON.stringify(serverContent)
+
+      // Only update if content is different (avoid infinite loop)
+      if (localJSON !== serverJSON) {
+        // Store cursor position
+        const cursorPos = window.editor.state.selection.$anchor.pos
+
+        // Update content
+        window.editor.commands.setContent(serverContent, false)
+
+        // Try to restore cursor position
+        try {
+          window.editor.commands.setTextSelection(Math.min(cursorPos, window.editor.state.doc.content.size))
+        } catch (e) {
+          window.editor.commands.setTextSelection(window.editor.state.doc.content.size)
+        }
+
+        // Show update notification
+        showUpdateNotification('Just now')
+      }
+    })
+
+  console.log(`✅ WebSocket real-time collaboration enabled for document #${docId}`)
+} else if (!window.Echo) {
+  console.warn('⚠️ Laravel Echo not initialized - real-time updates disabled')
+}
+
+// Show update notification
+function showUpdateNotification(timestamp) {
+  const notification = document.createElement('div')
+  notification.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: #4a90e2;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    z-index: 9999;
+    animation: slideIn 0.3s ease;
+  `
+  notification.textContent = `✓ Document updated by another user (${timestamp})`
+  document.body.appendChild(notification)
+
+  // Auto-remove after 4 seconds
+  setTimeout(() => {
+    notification.style.animation = 'fadeOut 0.3s ease'
+    setTimeout(() => notification.remove(), 300)
+  }, 4000)
+}
+
+// Add animation styles
+const style = document.createElement('style')
+style.textContent = `
+  @keyframes slideIn {
+    from { transform: translateX(400px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+  @keyframes fadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+`
+document.head.appendChild(style)

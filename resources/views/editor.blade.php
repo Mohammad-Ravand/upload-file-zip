@@ -294,6 +294,89 @@
         body.dark-mode .divider {
             border-left-color: var(--border-dark);
         }
+
+        .live-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            color: #22c55e;
+            padding: 0.5rem 1rem;
+            background-color: rgba(34, 197, 94, 0.1);
+            border-radius: 0.25rem;
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+
+        body.dark-mode .live-indicator {
+            background-color: rgba(34, 197, 94, 0.1);
+            border-color: rgba(34, 197, 94, 0.3);
+        }
+
+        .live-dot {
+            width: 8px;
+            height: 8px;
+            background-color: #22c55e;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .editor-controls {
+            display: none; /* Hidden - using auto-save instead */
+        }
+
+        .auto-save-status {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            font-size: 0.875rem;
+            color: #666;
+            background: rgba(0, 0, 0, 0.05);
+            padding: 8px 12px;
+            border-radius: 0.25rem;
+            display: none;
+        }
+
+        body.dark-mode .auto-save-status {
+            color: #aaa;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .auto-save-status.saving {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: #4a90e2;
+        }
+
+        .auto-save-status.saved {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: #22c55e;
+        }
+
+        .saving-dot {
+            width: 6px;
+            height: 6px;
+            background: #4a90e2;
+            border-radius: 50%;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+        }
+
+        @keyframes fadeInOut {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 1; }
+        }
     </style>
 </head>
 <body>
@@ -307,6 +390,12 @@
             <header>
                 <div class="header-left">
                     <input type="text" id="editor_title" name="title" placeholder="Untitled document">
+                    @if(isset($initial))
+                        <div class="live-indicator">
+                            <div class="live-dot"></div>
+                            <span>Live Sync Active</span>
+                        </div>
+                    @endif
                 </div>
                 <div class="header-right">
                     <button type="button" id="upload_btn">📷 Upload Image</button>
@@ -337,6 +426,12 @@
                 <button type="submit" id="submit_btn">Save Document</button>
             </div>
         </form>
+
+        <!-- Auto-save status indicator -->
+        <div class="auto-save-status" id="auto-save-status">
+            <span class="saving-dot"></span>
+            <span id="save-text">Auto-saving...</span>
+        </div>
     </div>
 
     <input type="file" id="image_input" accept="image/*">
