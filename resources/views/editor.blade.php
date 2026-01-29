@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>Rich Editor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-light: #ffffff;
+            --bg-dark: #1e1e1e;
+            --text-light: #000000;
+            --text-dark: #e0e0e0;
+            --card-light: #f5f5f5;
+            --card-dark: #2d2d2d;
+            --border-light: #e0e0e0;
+            --border-dark: #404040;
+        }
+
+        body {
+            background-color: var(--bg-light);
+            color: var(--text-light);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        body.dark-mode {
+            background-color: var(--bg-dark);
+            color: var(--text-dark);
+        }
+
+        header {
+            background-color: var(--card-light);
+            border-bottom: 1px solid var(--border-light);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background-color 0.3s, border-color 0.3s;
+        }
+
+        body.dark-mode header {
+            background-color: var(--card-dark);
+            border-bottom-color: var(--border-dark);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .header-left input {
+            font-size: 1.5rem;
+            font-weight: bold;
+            border: none;
+            background: transparent;
+            color: inherit;
+            padding: 0.5rem;
+            border-radius: 0.25rem;
+            width: 300px;
+        }
+
+        .header-left input:focus {
+            outline: 2px solid #4a90e2;
+            background-color: var(--card-light);
+        }
+
+        body.dark-mode .header-left input:focus {
+            background-color: var(--card-dark);
+        }
+
+        .header-right {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .header-right button, .header-right input[type="checkbox"] {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border-light);
+            background-color: var(--card-light);
+            color: inherit;
+            border-radius: 0.25rem;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        body.dark-mode .header-right button,
+        body.dark-mode .header-right input[type="checkbox"] {
+            border-color: var(--border-dark);
+            background-color: var(--card-dark);
+        }
+
+        .header-right button:hover {
+            background-color: var(--border-light);
+        }
+
+        body.dark-mode .header-right button:hover {
+            background-color: var(--border-dark);
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .toolbar {
+            background-color: var(--card-light);
+            border: 1px solid var(--border-light);
+            border-bottom: none;
+            padding: 0.75rem;
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            border-radius: 0.5rem 0.5rem 0 0;
+            transition: background-color 0.3s, border-color 0.3s;
+        }
+
+        body.dark-mode .toolbar {
+            background-color: var(--card-dark);
+            border-color: var(--border-dark);
+        }
+
+        .toolbar button {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--border-light);
+            background-color: var(--bg-light);
+            color: inherit;
+            border-radius: 0.25rem;
+            cursor: pointer;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+
+        body.dark-mode .toolbar button {
+            background-color: var(--bg-dark);
+            border-color: var(--border-dark);
+        }
+
+        .toolbar button:hover {
+            background-color: #e0e0e0;
+            border-color: #999;
+        }
+
+        body.dark-mode .toolbar button:hover {
+            background-color: #3d3d3d;
+            border-color: #666;
+        }
+
+        .toolbar button.is-active {
+            background-color: #4a90e2;
+            color: white;
+            border-color: #357abd;
+        }
+
+        body.dark-mode .toolbar button.is-active {
+            background-color: #4a90e2;
+        }
+
+        #editor {
+            background-color: var(--bg-light);
+            border: 1px solid var(--border-light);
+            border-top: none;
+            padding: 1.5rem;
+            min-height: 500px;
+            border-radius: 0 0 0.5rem 0.5rem;
+            transition: background-color 0.3s, border-color 0.3s;
+            overflow: auto;
+        }
+
+        body.dark-mode #editor {
+            background-color: var(--bg-dark);
+            border-color: var(--border-dark);
+        }
+
+        .ProseMirror {
+            outline: none;
+        }
+
+        .ProseMirror > * + * {
+            margin-top: 0.75em;
+        }
+
+        .ProseMirror ul,
+        .ProseMirror ol {
+            padding: 0 1rem;
+        }
+
+        .ProseMirror pre {
+            background: var(--card-light);
+            border: 1px solid var(--border-light);
+            border-radius: 0.25rem;
+            padding: 1rem;
+            overflow: auto;
+            font-size: 0.875rem;
+        }
+
+        body.dark-mode .ProseMirror pre {
+            background: var(--card-dark);
+            border-color: var(--border-dark);
+        }
+
+        .ProseMirror code {
+            background-color: var(--card-light);
+            padding: 0.2em 0.4em;
+            border-radius: 0.25rem;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.875em;
+        }
+
+        body.dark-mode .ProseMirror code {
+            background-color: var(--card-dark);
+        }
+
+        .ProseMirror blockquote {
+            border-left: 4px solid #4a90e2;
+            padding-left: 1rem;
+            margin-left: 0;
+            color: #666;
+            font-style: italic;
+        }
+
+        body.dark-mode .ProseMirror blockquote {
+            border-left-color: #6ba3ff;
+            color: #aaa;
+        }
+
+        .editor-controls {
+            margin-top: 1rem;
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .editor-controls button {
+            padding: 0.75rem 1.5rem;
+            background-color: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 0.25rem;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: background-color 0.2s;
+        }
+
+        .editor-controls button:hover {
+            background-color: #357abd;
+        }
+
+        #image_input {
+            display: none;
+        }
+
+        .divider {
+            border-left: 1px solid var(--border-light);
+            margin: 0 0.25rem;
+        }
+
+        body.dark-mode .divider {
+            border-left-color: var(--border-dark);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-left">
+            <input type="text" id="editor_title" name="title" placeholder="Untitled document">
+        </div>
+        <div class="header-right">
+            <button id="upload_btn" type="button">📷 Upload Image</button>
+            <div class="divider"></div>
+            <input type="checkbox" id="dark_toggle">
+            <label for="dark_toggle" style="margin: 0; cursor: pointer;">🌙</label>
+        </div>
+    </header>
+
+    <div class="container">
+        <form id="editor_form" method="POST" action="/editor">
+            @csrf
+            @if(isset($initial))
+                @method('PATCH')
+            @endif
+
+            <div class="toolbar">
+                <button type="button" id="btn_bold" title="Bold (Ctrl+B)">Bold</button>
+                <button type="button" id="btn_italic" title="Italic (Ctrl+I)">Italic</button>
+                <button type="button" id="btn_underline" title="Underline (Ctrl+U)">Underline</button>
+                <div class="divider"></div>
+                <button type="button" id="btn_bullet_list" title="Bullet List">• List</button>
+                <button type="button" id="btn_ordered_list" title="Ordered List">1. List</button>
+                <div class="divider"></div>
+                <button type="button" id="btn_code_block" title="Code Block">{ } Code</button>
+                <button type="button" id="btn_blockquote" title="Blockquote">" Quote</button>
+                <button type="button" id="btn_heading" title="Heading">H1</button>
+            </div>
+
+            <div id="editor"></div>
+
+            <input type="hidden" id="editor_json" name="content_json">
+
+            <div class="editor-controls">
+                <button type="submit" id="submit_btn">Save Document</button>
+            </div>
+        </form>
+    </div>
+
+    <input type="file" id="image_input" accept="image/*">
+
+    @vite('resources/js/app.js')
+
+    <script>
+        // Pass initial content if editing
+        @if(isset($initial))
+            window.__INITIAL_EDITOR_JSON__ = {!! $initial->content_json !!};
+            document.getElementById('editor_title').value = '{!! addslashes($initial->title ?? '') !!}';
+            document.getElementById('submit_btn').textContent = 'Update Document';
+            document.getElementById('editor_form').action = '/editor/{{ $initial->id }}';
+        @endif
+
+        // Restore dark mode preference
+        if (localStorage.getItem('editor-dark-mode') === 'true') {
+            document.body.classList.add('dark-mode');
+            document.getElementById('dark_toggle').checked = true;
+        }
+
+        document.getElementById('dark_toggle').addEventListener('change', function () {
+            if (this.checked) {
+                document.body.classList.add('dark-mode');
+                localStorage.setItem('editor-dark-mode', 'true');
+            } else {
+                document.body.classList.remove('dark-mode');
+                localStorage.setItem('editor-dark-mode', 'false');
+            }
+        });
+
+        document.getElementById('upload_btn').addEventListener('click', function () {
+            document.getElementById('image_input').click();
+        });
+
+        document.getElementById('image_input').addEventListener('change', async function (e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const formData = new FormData();
+            formData.append('image', file);
+
+            try {
+                const response = await fetch('/editor/upload-image', {
+                    method: 'POST',
+                    headers: {
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                    },
+                    body: formData
+                });
+
+                const data = await response.json();
+                if (data.url) {
+                    window.editorInstance?.chain().focus().setImage({ src: data.url }).run();
+                    this.value = '';
+                }
+            } catch (error) {
+                console.error('Image upload failed:', error);
+            }
+        });
+    </script>
+</body>
+</html>
