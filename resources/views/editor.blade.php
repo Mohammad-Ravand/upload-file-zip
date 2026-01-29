@@ -272,24 +272,24 @@
     </style>
 </head>
 <body>
-    <header>
-        <div class="header-left">
-            <input type="text" id="editor_title" name="title" placeholder="Untitled document">
-        </div>
-        <div class="header-right">
-            <button id="upload_btn" type="button">📷 Upload Image</button>
-            <div class="divider"></div>
-            <input type="checkbox" id="dark_toggle">
-            <label for="dark_toggle" style="margin: 0; cursor: pointer;">🌙</label>
-        </div>
-    </header>
-
     <div class="container">
         <form id="editor_form" method="POST" action="/editor">
             @csrf
             @if(isset($initial))
                 @method('PATCH')
             @endif
+
+            <header>
+                <div class="header-left">
+                    <input type="text" id="editor_title" name="title" placeholder="Untitled document">
+                </div>
+                <div class="header-right">
+                    <button type="button" id="upload_btn">📷 Upload Image</button>
+                    <div class="divider"></div>
+                    <input type="checkbox" id="dark_toggle">
+                    <label for="dark_toggle" style="margin: 0; cursor: pointer;">🌙</label>
+                </div>
+            </header>
 
             <div class="toolbar">
                 <button type="button" id="btn_bold" title="Bold (Ctrl+B)">Bold</button>
