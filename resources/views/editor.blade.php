@@ -343,35 +343,7 @@
             }
         });
 
-        document.getElementById('upload_btn').addEventListener('click', function () {
-            document.getElementById('image_input').click();
-        });
-
-        document.getElementById('image_input').addEventListener('change', async function (e) {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            const formData = new FormData();
-            formData.append('image', file);
-
-            try {
-                const response = await fetch('/editor/upload-image', {
-                    method: 'POST',
-                    headers: {
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
-                    },
-                    body: formData
-                });
-
-                const data = await response.json();
-                if (data.url) {
-                    window.editorInstance?.chain().focus().setImage({ src: data.url }).run();
-                    this.value = '';
-                }
-            } catch (error) {
-                console.error('Image upload failed:', error);
-            }
-        });
+        // Image upload is handled by editor.js
     </script>
 </body>
 </html>

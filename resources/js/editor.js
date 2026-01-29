@@ -94,6 +94,14 @@ if (form) {
 }
 
 // Image upload handler
+const uploadBtn = document.getElementById('upload_btn')
+if (uploadBtn) {
+  uploadBtn.addEventListener('click', (e) => {
+    e.preventDefault()
+    document.getElementById('image_input')?.click()
+  })
+}
+
 const imageInput = document.getElementById('image_input')
 if (imageInput) {
   imageInput.addEventListener('change', async (e) => {
