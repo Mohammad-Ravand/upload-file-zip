@@ -197,18 +197,43 @@
         }
 
         .ProseMirror pre {
-            background: var(--card-light);
-            border: 1px solid var(--border-light);
-            border-radius: 0.25rem;
-            padding: 1rem;
+            background: #282c34;
+            border: 1px solid #3e4451;
+            border-radius: 0.5rem;
+            padding: 1.2rem;
             overflow: auto;
             font-size: 0.875rem;
+            color: #abb2bf;
+            line-height: 1.5;
+            font-family: 'Monaco', 'Courier New', 'Fira Code', monospace;
         }
 
         body.dark-mode .ProseMirror pre {
-            background: var(--card-dark);
-            border-color: var(--border-dark);
+            background: #282c34;
+            border-color: #3e4451;
+            color: #abb2bf;
         }
+
+        .ProseMirror pre code {
+            background: transparent;
+            padding: 0;
+            color: inherit;
+            font-family: inherit;
+        }
+
+        /* Syntax highlighting colors from atom-one-dark theme */
+        .hljs-attr { color: #e06c75; }
+        .hljs-string { color: #98c379; }
+        .hljs-number { color: #d19a66; }
+        .hljs-literal { color: #56b6c2; }
+        .hljs-type { color: #61afef; }
+        .hljs-title { color: #61afef; }
+        .hljs-function { color: #61afef; }
+        .hljs-keyword { color: #c678dd; }
+        .hljs-tag { color: #e06c75; }
+        .hljs-name { color: #e06c75; }
+        .hljs-comment { color: #5c6370; }
+        .hljs-meta { color: #5c6370; }
 
         .ProseMirror code {
             background-color: var(--card-light);

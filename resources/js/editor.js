@@ -7,16 +7,28 @@ import Link from '@tiptap/extension-link'
 import Underline from '@tiptap/extension-underline'
 import TextAlign from '@tiptap/extension-text-align'
 import { lowlight } from 'lowlight'
+// Import highlight.js CSS theme (choose one)
+import 'highlight.js/styles/atom-one-dark.css'
 // highlight.js languages
 import javascript from 'highlight.js/lib/languages/javascript'
 import php from 'highlight.js/lib/languages/php'
 import bash from 'highlight.js/lib/languages/bash'
 import json from 'highlight.js/lib/languages/json'
+import python from 'highlight.js/lib/languages/python'
+import html from 'highlight.js/lib/languages/xml'
+import css from 'highlight.js/lib/languages/css'
+import sql from 'highlight.js/lib/languages/sql'
+import typescript from 'highlight.js/lib/languages/typescript'
 
 lowlight.registerLanguage('javascript', javascript)
 lowlight.registerLanguage('php', php)
 lowlight.registerLanguage('bash', bash)
 lowlight.registerLanguage('json', json)
+lowlight.registerLanguage('python', python)
+lowlight.registerLanguage('html', html)
+lowlight.registerLanguage('css', css)
+lowlight.registerLanguage('sql', sql)
+lowlight.registerLanguage('typescript', typescript)
 
 const editorElement = document.querySelector('#editor')
 const inputElement = document.querySelector('#editor_json')
