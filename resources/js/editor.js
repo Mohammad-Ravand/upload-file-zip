@@ -281,41 +281,80 @@ console.log('Editor ready. Commands: editor.chain().focus().toggleBold().run(), 
 if (docId && window.Echo) {
   console.log(`🔌 Connecting to WebSocket channel for document #${docId}`)
 
-  // Listen on the editor channel
-  window.Echo.channel(`editor-${docId}`)
-    .listen('EditorUpdated', (event) => {
-      console.log('📨 Received real-time update from another user:', event)
+  // Get or create channel and explicitly subscribe
+  const channel = window.Echo.channel(`editor-${docId}`)
 
-      // Parse content
-      const serverContent = typeof event.content === 'string'
-        ? JSON.parse(event.content)
-        : event.content
-
-      const localContent = window.editor.getJSON()
-      const localJSON = JSON.stringify(localContent)
-      const serverJSON = JSON.stringify(serverContent)
-
-      // Only update if content is different (avoid infinite loop)
-      if (localJSON !== serverJSON) {
-        // Store cursor position
-        const cursorPos = window.editor.state.selection.$anchor.pos
-
-        // Update content
-        window.editor.commands.setContent(serverContent, false)
-
-        // Try to restore cursor position
-        try {
-          window.editor.commands.setTextSelection(Math.min(cursorPos, window.editor.state.doc.content.size))
-        } catch (e) {
-          window.editor.commands.setTextSelection(window.editor.state.doc.content.size)
-        }
-
-        // Show update notification
-        showUpdateNotification('Just now')
-      }
+  // Immediately attach error handler to see any subscription errors
+  if (channel && typeof channel.error === 'function') {
+    channel.error((err) => {
+      console.error('❌ Channel subscription error:', err)
     })
+  }
 
-  console.log(`✅ WebSocket real-time collaboration enabled for document #${docId}`)
+  const handleEditorUpdated = (event) => {
+    console.log('📨 Received real-time update from another user:', event)
+
+    // Support payloads where the broadcast payload may be nested or stringified
+    const serverContentRaw = event.content ?? event.data?.content ?? event
+    let serverContent
+    try {
+      if (typeof serverContentRaw === 'string') {
+        serverContent = JSON.parse(serverContentRaw)
+      } else if (serverContentRaw && serverContentRaw.content) {
+        serverContent = typeof serverContentRaw.content === 'string'
+          ? JSON.parse(serverContentRaw.content)
+          : serverContentRaw.content
+      } else {
+        serverContent = serverContentRaw
+      }
+    } catch (e) {
+      console.error('Failed to parse server content:', e)
+      return
+    }
+
+    if (!serverContent) return
+
+    const localContent = window.editor.getJSON()
+    const localJSON = JSON.stringify(localContent)
+    const serverJSON = JSON.stringify(serverContent)
+
+    // Only update if content is different (avoid infinite loop)
+    if (localJSON !== serverJSON) {
+      // Store cursor position
+      const cursorPos = window.editor.state.selection.$anchor.pos
+
+      // Update content without adding to history
+      window.editor.commands.setContent(serverContent, false)
+
+      // Try to restore cursor position
+      try {
+        window.editor.commands.setTextSelection(Math.min(cursorPos, window.editor.state.doc.content.size))
+      } catch (e) {
+        window.editor.commands.setTextSelection(window.editor.state.doc.content.size)
+      }
+
+      // Show update notification
+      showUpdateNotification('Just now')
+    }
+  }
+
+  // Listen for broadcast event — this triggers subscription internally
+  // The event is named 'editor.updated' per broadcastAs() in EditorUpdated event class
+  channel.listen('editor.updated', handleEditorUpdated)
+
+  // Also listen to alternative names for robustness
+  channel.listen('EditorUpdated', handleEditorUpdated)
+  channel.listen('App\\\\Events\\\\EditorUpdated', handleEditorUpdated)
+
+  // Wait a tick then log subscription status
+  setTimeout(() => {
+    if (channel && typeof channel.subscribed === 'function') {
+      channel.subscribed(() => {
+        console.log(`✅ Successfully subscribed to editor-${docId} channel`)
+      })
+    }
+    console.log(`✅ WebSocket real-time collaboration enabled for document #${docId}`)
+  }, 100)
 } else if (!window.Echo) {
   console.warn('⚠️ Laravel Echo not initialized - real-time updates disabled')
 }

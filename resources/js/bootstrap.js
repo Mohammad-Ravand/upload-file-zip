@@ -9,8 +9,8 @@ window.axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
 // Configure Pusher for local development
 window.Pusher = Pusher;
 
-// Disable Pusher logging in development
-Pusher.logToConsole = false;
+// Enable Pusher logging in development for debugging
+Pusher.logToConsole = true;
 
 window.Echo = new Echo({
     broadcaster: 'pusher',

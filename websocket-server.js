@@ -10,7 +10,88 @@ import http from 'http';
 import url from 'url';
 
 const PORT = 6001;
-const server = http.createServer();
+const server = http.createServer((req, res) => {
+  // Simple HTTP endpoint to accept Pusher-style event posts from server-side
+  // clients (e.g. pusher-php-server). Accept POST /apps/:appId/events
+  try {
+    const parsed = url.parse(req.url, true)
+    if (req.method === 'POST' && /\/apps\/[^\/]+\/events/.test(parsed.pathname)) {
+      let body = ''
+      req.on('data', chunk => { body += chunk.toString() })
+      req.on('end', () => {
+        let payload
+        try {
+          payload = JSON.parse(body)
+        } catch (err) {
+          console.warn('⚠️ HTTP POST received with non-JSON body:', body.substring(0, 1000))
+          try {
+            // attempt to parse query-string style payload
+            const params = new URLSearchParams(body)
+            const dataStr = params.get('data') || params.get('payload')
+            payload = dataStr ? JSON.parse(dataStr) : Object.fromEntries(params.entries())
+          } catch (err2) {
+            res.writeHead(400)
+            res.end('Invalid JSON')
+            return
+          }
+        }
+
+        // payload typically contains: name, channels, data
+        const eventName = payload.name || payload.event
+        let channelsList = payload.channels || payload.channel || []
+        let eventData = payload.data || payload
+
+        // Normalize channelsList to an array
+        if (typeof channelsList === 'string' && channelsList.length) {
+          channelsList = [channelsList]
+        }
+        if (!Array.isArray(channelsList)) {
+          channelsList = []
+        }
+
+        // If data is a JSON string, attempt to parse
+        if (typeof eventData === 'string') {
+          try { eventData = JSON.parse(eventData) } catch (e) { /* leave as string */ }
+        }
+
+        channelsList.forEach((channelName) => {
+          if (channels.has(channelName)) {
+            channels.get(channelName).forEach((client) => {
+              try {
+                if (client.readyState === 1) {
+                  const payloadOut = { event: eventName, channel: channelName, data: eventData }
+                  client.send(JSON.stringify(payloadOut))
+                  console.log(`➡️ Sent event ${eventName} to client ${client.clientId || 'unknown'} on ${channelName}`)
+                }
+              } catch (err) {
+                console.error('Failed to send to client:', err.message)
+              }
+            })
+          } else {
+            console.log(`ℹ️ No subscribers for channel ${channelName}`)
+          }
+        })
+
+        res.writeHead(200, { 'Content-Type': 'application/json' })
+        res.end(JSON.stringify({ status: 'ok' }))
+        console.log(`🌐 HTTP POST -> broadcast ${eventName} to ${channelsList.join(',')}`)
+      })
+      return
+    }
+  } catch (err) {
+    // fall through to default
+  }
+
+  // default health endpoint
+  if (req.method === 'GET' && req.url === '/') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' })
+    res.end('WebSocket Pusher simulator')
+    return
+  }
+
+  res.writeHead(404)
+  res.end()
+});
 const wss = new WebSocketServer({ server });
 
 const channels = new Map();
@@ -27,6 +108,9 @@ wss.on('connection', (ws, req) => {
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message);
+      
+      // Log all messages received (debug)
+      console.log(`📩 Message from ${clientId}: ${data.event || 'unknown'} - ${JSON.stringify(data).substring(0, 100)}`)
 
       if (data.event === 'pusher:subscribe') {
         const channelName = data.data.channel;
@@ -37,7 +121,7 @@ wss.on('connection', (ws, req) => {
         }
         channels.get(channelName).add(ws);
 
-        console.log(`📡 ${clientId} subscribed to: ${channelName}`);
+        console.log(`📡 ✅ ${clientId} subscribed to: ${channelName}`);
 
         // Send subscription confirmation
         ws.send(JSON.stringify({
