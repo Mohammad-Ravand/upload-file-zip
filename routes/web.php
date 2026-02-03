@@ -64,7 +64,21 @@ Route::post('editor', function (Request $request) {
         'content_json' => $data['content_json']
     ]);
 
-    return redirect('/editor/' . $model->id);
+    // Broadcast initial creation to enable live editing
+    try {
+        broadcast(new EditorUpdated(
+            $model->id,
+            $model->title,
+            $model->content_json,
+            null
+        ));
+        \Log::info('Broadcast sent for new document', ['id' => $model->id]);
+    } catch (\Exception $e) {
+        \Log::error('Broadcast failed for new document', ['error' => $e->getMessage()]);
+    }
+
+    // Redirect to edit route so WebSocket can connect
+    return redirect('/editor/' . $model->id . '/edit');
 });
 
 // update existing document
@@ -80,13 +94,19 @@ Route::patch('editor/{id}', function (Request $request, $id) {
         'content_json' => $data['content_json']
     ]);
 
-    // Broadcast update to other users
-    broadcast(new EditorUpdated(
-        $item->id,
-        $item->title,
-        $item->content_json,
-        null
-    ))->toOthers();
+    // Broadcast update to all users (including sender - client will filter)
+    // Note: toOthers() requires authentication, so we broadcast to all and filter client-side
+    try {
+        broadcast(new EditorUpdated(
+            $item->id,
+            $item->title,
+            $item->content_json,
+            null
+        ));
+        \Log::info('Broadcast sent for document', ['id' => $item->id, 'channel' => 'editor-' . $item->id]);
+    } catch (\Exception $e) {
+        \Log::error('Broadcast failed', ['error' => $e->getMessage(), 'document_id' => $item->id]);
+    }
 
     return response()->json([
         'success' => true,
@@ -114,7 +134,7 @@ Route::get('editor/{id}', function ($id) {
     return view('editor_show', ['item' => $item]);
 });
 
-// poll for content updates (live collaboration)
+// poll for content updates (live collaboration via AJAX)
 Route::get('editor/{id}/poll', function ($id) {
     $item = EditorContent::findOrFail($id);
     return response()->json([
@@ -122,6 +142,7 @@ Route::get('editor/{id}/poll', function ($id) {
         'title' => $item->title,
         'content_json' => $item->content_json,
         'updated_at' => $item->updated_at->timestamp,
-        'updated_at_human' => $item->updated_at->diffForHumans()
+        'updated_at_human' => $item->updated_at->diffForHumans(),
+        'updated_at_iso' => $item->updated_at->toIso8601String()
     ]);
 });

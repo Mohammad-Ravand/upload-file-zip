@@ -11,28 +11,86 @@ import url from 'url';
 
 const PORT = 6001;
 const server = http.createServer((req, res) => {
+  // Log ALL incoming requests for debugging
+  console.log(`\n🌐 ${req.method} ${req.url} from ${req.socket.remoteAddress || 'unknown'}`)
+  
   // Simple HTTP endpoint to accept Pusher-style event posts from server-side
   // clients (e.g. pusher-php-server). Accept POST /apps/:appId/events
   try {
     const parsed = url.parse(req.url, true)
-    if (req.method === 'POST' && /\/apps\/[^\/]+\/events/.test(parsed.pathname)) {
+    
+    // Debug: log the pathname pattern match
+    const isEventsEndpoint = /\/apps\/[^\/]+\/events/.test(parsed.pathname)
+    console.log(`   Path: ${parsed.pathname}, Method: ${req.method}, Matches events pattern: ${isEventsEndpoint}`)
+    
+    if (req.method === 'POST' && isEventsEndpoint) {
+      console.log(`✅ Processing broadcast request to ${parsed.pathname}`)
+      console.log(`   Content-Type: ${req.headers['content-type'] || 'not set'}`)
+      
       let body = ''
       req.on('data', chunk => { body += chunk.toString() })
       req.on('end', () => {
+        console.log(`   Raw body (first 500 chars): ${body.substring(0, 500)}`)
+        
         let payload
-        try {
-          payload = JSON.parse(body)
-        } catch (err) {
-          console.warn('⚠️ HTTP POST received with non-JSON body:', body.substring(0, 1000))
+        const contentType = req.headers['content-type'] || ''
+        
+        // Laravel Pusher driver sends form-encoded data, not JSON
+        if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
           try {
-            // attempt to parse query-string style payload
+            // Parse form-encoded data
             const params = new URLSearchParams(body)
-            const dataStr = params.get('data') || params.get('payload')
-            payload = dataStr ? JSON.parse(dataStr) : Object.fromEntries(params.entries())
-          } catch (err2) {
+            payload = {}
+            
+            // Extract fields
+            const name = params.get('name') || params.get('event')
+            const channels = params.get('channels') || params.get('channel')
+            const data = params.get('data')
+            const socketId = params.get('socket_id')
+            
+            if (name) payload.name = name
+            if (channels) {
+              // Channels might be JSON string or comma-separated
+              try {
+                payload.channels = JSON.parse(channels)
+              } catch {
+                payload.channels = channels.split(',').map(c => c.trim())
+              }
+            }
+            if (data) {
+              // Data is usually a JSON string
+              try {
+                payload.data = JSON.parse(data)
+              } catch {
+                payload.data = data
+              }
+            }
+            if (socketId) payload.socket_id = socketId
+            
+            console.log(`   Parsed form data: name=${payload.name}, channels=${JSON.stringify(payload.channels)}`)
+          } catch (err) {
+            console.error('❌ Failed to parse form data:', err.message)
             res.writeHead(400)
-            res.end('Invalid JSON')
+            res.end('Invalid form data')
             return
+          }
+        } else {
+          // Try JSON
+          try {
+            payload = JSON.parse(body)
+          } catch (err) {
+            console.warn('⚠️ HTTP POST received with non-JSON body, trying form-encoded:', body.substring(0, 200))
+            try {
+              // attempt to parse query-string style payload
+              const params = new URLSearchParams(body)
+              const dataStr = params.get('data') || params.get('payload')
+              payload = dataStr ? JSON.parse(dataStr) : Object.fromEntries(params.entries())
+            } catch (err2) {
+              console.error('❌ Failed to parse body:', err2.message)
+              res.writeHead(400)
+              res.end('Invalid request body')
+              return
+            }
           }
         }
 
@@ -54,27 +112,35 @@ const server = http.createServer((req, res) => {
           try { eventData = JSON.parse(eventData) } catch (e) { /* leave as string */ }
         }
 
+        console.log(`📤 Broadcasting to channels: ${channelsList.join(', ')}`)
+        console.log(`   Event: ${eventName}`)
+        console.log(`   Data keys: ${Object.keys(eventData || {}).join(', ')}`)
+        
         channelsList.forEach((channelName) => {
           if (channels.has(channelName)) {
-            channels.get(channelName).forEach((client) => {
+            const subscribers = channels.get(channelName)
+            console.log(`   Channel ${channelName} has ${subscribers.size} subscriber(s)`)
+            subscribers.forEach((client) => {
               try {
                 if (client.readyState === 1) {
                   const payloadOut = { event: eventName, channel: channelName, data: eventData }
                   client.send(JSON.stringify(payloadOut))
-                  console.log(`➡️ Sent event ${eventName} to client ${client.clientId || 'unknown'} on ${channelName}`)
+                  console.log(`   ➡️ Sent event ${eventName} to client ${client.clientId || 'unknown'} on ${channelName}`)
+                } else {
+                  console.log(`   ⚠️ Client ${client.clientId} not ready (state: ${client.readyState})`)
                 }
               } catch (err) {
-                console.error('Failed to send to client:', err.message)
+                console.error(`   ❌ Failed to send to client ${client.clientId}:`, err.message)
               }
             })
           } else {
-            console.log(`ℹ️ No subscribers for channel ${channelName}`)
+            console.log(`   ℹ️ No subscribers for channel ${channelName} (available channels: ${Array.from(channels.keys()).join(', ') || 'none'})`)
           }
         })
 
         res.writeHead(200, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify({ status: 'ok' }))
-        console.log(`🌐 HTTP POST -> broadcast ${eventName} to ${channelsList.join(',')}`)
+        console.log(`✅ HTTP POST processed: ${eventName} -> ${channelsList.join(',')}`)
       })
       return
     }
@@ -89,8 +155,10 @@ const server = http.createServer((req, res) => {
     return
   }
 
+  // Log unhandled requests
+  console.log(`⚠️ Unhandled request: ${req.method} ${req.url}`)
   res.writeHead(404)
-  res.end()
+  res.end('Not found')
 });
 const wss = new WebSocketServer({ server });
 
