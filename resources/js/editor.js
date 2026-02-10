@@ -93,19 +93,13 @@ if (!inputElement) {
 }
 
 // Extract document ID from URL for auto-save and WebSocket
-// Handles both /editor/{id} and /editor/{id}/edit routes
 let urlPath = window.location.pathname
-let docIdMatch = urlPath.match(/\/editor\/(\d+)(?:\/edit)?/)
+let docIdMatch = urlPath.match(/\/editor\/(\d+)/)
 let docId = docIdMatch ? docIdMatch[1] : null
-
-if (docId) {
-  console.log(`📄 Document ID detected: ${docId}`)
-}
 
 // Auto-save function - saves without page reload
 let lastSavedContent = JSON.stringify(window.editor.getJSON())
 let isSaving = false
-let lastSentContent = null // Track content we just sent to prevent processing our own updates
 
 const autoSave = async () => {
   if (!docId || isSaving || !window.editorModified) return
@@ -138,26 +132,10 @@ const autoSave = async () => {
     })
 
     if (response.ok) {
-      const responseData = await response.json()
       lastSavedContent = currentContent
-      lastSentContent = currentContent // Track what we just sent
       window.editorModified = false
       console.log('💾 Auto-saved at', new Date().toLocaleTimeString())
       showSavedStatus()
-
-      // Update last known timestamp from server response to avoid polling our own update
-      if (responseData.updated_at) {
-        // The polling will pick up the new timestamp on next poll
-        // We set lastSentContent to prevent applying our own update
-      }
-
-      // Clear the sent content tracker after a short delay
-      // This allows us to ignore our own poll response but accept future updates
-      setTimeout(() => {
-        if (lastSentContent === currentContent) {
-          lastSentContent = null
-        }
-      }, 3000) // Clear after 3 seconds (longer than poll interval)
     } else {
       console.error('Auto-save failed:', response.status)
     }
@@ -196,24 +174,14 @@ setInterval(autoSave, 2000)  // Auto-save every 2 seconds
 console.log('✅ Auto-save interval started: every 2 seconds')
 // ⭐ END AUTO-SAVE INTERVAL
 
-// Form submission handler
+// Form submission should not be needed anymore, but keep for safety
 const form = document.querySelector('#editor_form')
 if (form) {
-  form.addEventListener('submit', async (e) => {
-    // For new documents (no docId), allow normal form submission
-    if (!docId) {
-      // Update hidden input before submit
-      if (inputElement) {
-        inputElement.value = JSON.stringify(window.editor.getJSON())
-      }
-      // Let form submit normally to create the document
-      return true
-    }
-
-    // For existing documents, prevent default and use auto-save
+  form.addEventListener('submit', (e) => {
     e.preventDefault()
-    await autoSave()
-    showSavedStatus()
+    autoSave().then(() => {
+      showSaveIndicator()
+    })
   })
 }
 
@@ -309,174 +277,111 @@ Object.entries(toolbarButtons).forEach(([id, command]) => {
 // Show available commands in console for debugging
 console.log('Editor ready. Commands: editor.chain().focus().toggleBold().run(), etc.')
 
-// Real-time collaboration using AJAX Long Polling
-if (docId) {
-  console.log(`🔄 Starting long polling for document #${docId}`)
+// Real-time collaboration using Laravel Echo & WebSocket
+if (docId && window.Echo) {
+  console.log(`🔌 Connecting to WebSocket channel for document #${docId}`)
 
-  // Track if we're currently applying a remote update to prevent loops
-  let isApplyingRemoteUpdate = false
-  let lastKnownTimestamp = null
-  let pollingInterval = null
-  let isPolling = false
+  // Get or create channel and explicitly subscribe
+  const channel = window.Echo.channel(`editor-${docId}`)
 
-  // Function to check for updates from server
-  const checkForUpdates = async () => {
-    // Don't poll if already polling or applying update
-    if (isPolling || isApplyingRemoteUpdate) {
+  // Immediately attach error handler to see any subscription errors
+  if (channel && typeof channel.error === 'function') {
+    channel.error((err) => {
+      console.error('❌ Channel subscription error:', err)
+    })
+  }
+
+  const handleEditorUpdated = (event) => {
+    console.log('📨 Received real-time update from another user:', event)
+
+    // Support payloads where the broadcast payload may be nested or stringified
+    const serverContentRaw = event.content ?? event.data?.content ?? event
+    let serverContent
+    try {
+      if (typeof serverContentRaw === 'string') {
+        serverContent = JSON.parse(serverContentRaw)
+      } else if (serverContentRaw && serverContentRaw.content) {
+        serverContent = typeof serverContentRaw.content === 'string'
+          ? JSON.parse(serverContentRaw.content)
+          : serverContentRaw.content
+      } else {
+        serverContent = serverContentRaw
+      }
+    } catch (e) {
+      console.error('Failed to parse server content:', e)
       return
     }
 
-    isPolling = true
+    if (!serverContent) return
 
-    try {
-      const response = await fetch(`/editor/${docId}/poll`)
+    const localContent = window.editor.getJSON()
+    const localJSON = JSON.stringify(localContent)
+    const serverJSON = JSON.stringify(serverContent)
 
-      if (!response.ok) {
-        console.warn('⚠️ Poll request failed:', response.status)
-        isPolling = false
-        return
+    // Only update if content is different (avoid infinite loop)
+    if (localJSON !== serverJSON) {
+      // Store cursor position
+      const cursorPos = window.editor.state.selection.$anchor.pos
+
+      // Update content without adding to history
+      window.editor.commands.setContent(serverContent, false)
+
+      // Try to restore cursor position
+      try {
+        window.editor.commands.setTextSelection(Math.min(cursorPos, window.editor.state.doc.content.size))
+      } catch (e) {
+        window.editor.commands.setTextSelection(window.editor.state.doc.content.size)
       }
 
-      const data = await response.json()
-
-      // Check if content has been updated (compare timestamps)
-      if (lastKnownTimestamp && data.updated_at && data.updated_at > lastKnownTimestamp) {
-        console.log('📨 Content updated on server, applying changes...')
-
-        // Parse the content JSON
-        let serverContent
-        try {
-          if (typeof data.content_json === 'string') {
-            serverContent = JSON.parse(data.content_json)
-          } else {
-            serverContent = data.content_json
-          }
-        } catch (e) {
-          console.error('❌ Failed to parse server content:', e)
-          isPolling = false
-          return
-        }
-
-        if (!serverContent) {
-          console.warn('⚠️ Server content is empty')
-          isPolling = false
-          return
-        }
-
-        const localContent = window.editor.getJSON()
-        const localJSON = JSON.stringify(localContent)
-        const serverJSON = JSON.stringify(serverContent)
-
-        // Ignore if this is our own update (we just sent this content)
-        if (lastSentContent && serverJSON === lastSentContent) {
-          console.log('🔄 Ignoring own update (content matches what we just sent)')
-          lastSentContent = null
-          lastKnownTimestamp = data.updated_at
-          isPolling = false
-          return
-        }
-
-        // Only update if content is different
-        if (localJSON !== serverJSON) {
-          console.log('🔄 Applying remote update (content differs)')
-          isApplyingRemoteUpdate = true
-
-          // Store cursor position
-          const { from, to } = window.editor.state.selection
-
-          // Update content without adding to history
-          window.editor.commands.setContent(serverContent, false)
-
-          // Update title if changed
-          if (data.title && document.querySelector('#editor_title')) {
-            const titleInput = document.querySelector('#editor_title')
-            if (titleInput.value !== data.title) {
-              titleInput.value = data.title
-            }
-          }
-
-          // Try to restore cursor position after a brief delay
-          setTimeout(() => {
-            try {
-              const docSize = window.editor.state.doc.content.size
-              const newFrom = Math.min(from, docSize)
-              const newTo = Math.min(to, docSize)
-              window.editor.commands.setTextSelection({ from: newFrom, to: newTo })
-            } catch (e) {
-              // If selection fails, just move to end
-              window.editor.commands.setTextSelection(window.editor.state.doc.content.size)
-            }
-            isApplyingRemoteUpdate = false
-          }, 50)
-
-          // Update last saved content to match server
-          lastSavedContent = serverJSON
-          lastKnownTimestamp = data.updated_at
-
-          // Show update notification
-          showUpdateNotification(data.updated_at_human || 'Just now')
-        } else {
-          // Content matches, just update timestamp
-          lastKnownTimestamp = data.updated_at
-        }
-      } else if (!lastKnownTimestamp) {
-        // First poll - just store the timestamp
-        lastKnownTimestamp = data.updated_at
-        console.log('✅ Initial poll complete, timestamp:', lastKnownTimestamp)
-      }
-    } catch (error) {
-      console.error('❌ Poll error:', error)
-    } finally {
-      isPolling = false
+      // Show update notification
+      showUpdateNotification('Just now')
     }
   }
 
-  // Start polling every 2 seconds
-  const POLL_INTERVAL = 2000 // 2 seconds
+  // Listen for broadcast event — this triggers subscription internally
+  // The event is named 'editor.updated' per broadcastAs() in EditorUpdated event class
+  channel.listen('editor.updated', handleEditorUpdated)
 
-  // Initial poll after 1 second
+  // Also listen to alternative names for robustness
+  channel.listen('EditorUpdated', handleEditorUpdated)
+  channel.listen('App\\\\Events\\\\EditorUpdated', handleEditorUpdated)
+
+  // Wait a tick then log subscription status
   setTimeout(() => {
-    checkForUpdates()
-  }, 1000)
-
-  // Set up interval polling
-  pollingInterval = setInterval(checkForUpdates, POLL_INTERVAL)
-
-  console.log(`✅ Long polling enabled for document #${docId} (every ${POLL_INTERVAL}ms)`)
-
-  // Clean up on page unload
-  window.addEventListener('beforeunload', () => {
-    if (pollingInterval) {
-      clearInterval(pollingInterval)
+    if (channel && typeof channel.subscribed === 'function') {
+      channel.subscribed(() => {
+        console.log(`✅ Successfully subscribed to editor-${docId} channel`)
+      })
     }
-  })
-} else {
-  console.log('ℹ️ No document ID found - polling disabled (new document)')
+    console.log(`✅ WebSocket real-time collaboration enabled for document #${docId}`)
+  }, 100)
+} else if (!window.Echo) {
+  console.warn('⚠️ Laravel Echo not initialized - real-time updates disabled')
 }
 
 // Show update notification
 function showUpdateNotification(timestamp) {
-//   const notification = document.createElement('div')
-//   notification.style.cssText = `
-//     position: fixed;
-//     bottom: 20px;
-//     right: 20px;
-//     background: #4a90e2;
-//     color: white;
-//     padding: 12px 20px;
-//     border-radius: 0.5rem;
-//     font-size: 0.875rem;
-//     z-index: 9999;
-//     animation: slideIn 0.3s ease;
-//   `
-//   notification.textContent = ``
-//   document.body.appendChild(notification)
+  const notification = document.createElement('div')
+  notification.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: #4a90e2;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    z-index: 9999;
+    animation: slideIn 0.3s ease;
+  `
+  notification.textContent = `✓ Document updated by another user (${timestamp})`
+  document.body.appendChild(notification)
 
-//   // Auto-remove after 4 seconds
-//   setTimeout(() => {
-//     notification.style.animation = 'fadeOut 0.3s ease'
-//     setTimeout(() => notification.remove(), 300)
-//   }, 4000)
+  // Auto-remove after 4 seconds
+  setTimeout(() => {
+    notification.style.animation = 'fadeOut 0.3s ease'
+    setTimeout(() => notification.remove(), 300)
+  }, 4000)
 }
 
 // Add animation styles
