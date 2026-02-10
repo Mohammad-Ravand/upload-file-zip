@@ -34,6 +34,8 @@
         body.dark-mode {
             background-color: var(--bg-dark);
             color: var(--text-dark);
+            margin: auto;
+            display: flex;
         }
 
         header {
@@ -108,7 +110,7 @@
         }
 
         .container {
-            max-width: 900px;
+            max-width: 100vw;
             margin: 0 auto;
             padding: 2rem;
         }
@@ -176,9 +178,14 @@
             border-radius: 0 0 0.5rem 0.5rem;
             transition: background-color 0.3s, border-color 0.3s;
             overflow: auto;
-            width:1200px;
         }
 
+
+        @media (min-width:900px){
+            #editor{
+                max-width: 1200px;
+            }
+        }
         body.dark-mode #editor {
             background-color: var(--bg-dark);
             border-color: var(--border-dark);
