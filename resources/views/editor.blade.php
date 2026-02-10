@@ -183,6 +183,7 @@
 
         @media (min-width:900px){
             #editor{
+                width: 100vw;
                 max-width: 1200px;
             }
         }
